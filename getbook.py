@@ -50,7 +50,7 @@ class piaotian(object):
 
 
     def getcontent(self,title_url):
-        rc = re.compile(r'(.*)<div id="nr1">&nbsp;&nbsp;&nbsp;&nbsp;(.*)(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
+        rc = re.compile(r'(.*)<div id="nr1">(.*)(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
 
         r = requests.Session()
         for n in range(len(title_url)):
@@ -60,8 +60,14 @@ class piaotian(object):
             c = s.text
             
             article_content = rc.match(c).group(2)
-            with open ('%s-%s.txt' % (n+1,title_url[n][0]),'wt') as f:
+            with open('book.html','at') as f:
+                f.write('<h2>%s</h2>' % title_url[n][0])
+                #f.write('## %s' % title_url[n][0])
+                f.write('<br/><br/>')
                 f.write(article_content)
+                f.write('<br/><br/>')
+            #with open ('%s-%s.txt' % (n+1,title_url[n][0]),'wt') as f:
+            #    f.write(article_content)
 
 if __name__ == '__main__':
     test = piaotian()
