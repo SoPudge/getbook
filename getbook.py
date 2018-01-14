@@ -49,10 +49,22 @@ class piaotian(object):
         return title_url
 
 
-    def getcontent(self):
-        pass
+    def getcontent(self,title_url):
+        rc = re.compile(r'(.*)<div id="nr1">&nbsp;&nbsp;&nbsp;&nbsp;(.*)(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
+
+        r = requests.Session()
+        for n in range(len(title_url)):
+            print('%s:[%s,%s]' % (n,title_url[n][0],title_url[n][1]))
+            s = r.get(title_url[n][1])
+            s.encoding = 'gbk'
+            c = s.text
+            
+            article_content = rc.match(c).group(2)
+            with open ('%s-%s.txt' % (n+1,title_url[n][0]),'wt') as f:
+                f.write(article_content)
 
 if __name__ == '__main__':
     test = piaotian()
-    test.getlist(1657)
+    title_url = test.getlist(1657)
+    test.getcontent(title_url)
 
