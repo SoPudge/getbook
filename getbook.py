@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-                                                                                                                                  
 import re
+import os
 import requests 
 from lxml import html
 
@@ -15,7 +16,7 @@ class piaotian(object):
         baseurl = 'http://m.piaotian.com'
         re_pagenum = re.compile(r'(.*)/(\d{1,4})页(.*)',re.S)
 
-        #获取书籍在移动端网页的目录页数，通过正则表达式读取requets的内容
+        #获取书籍的页数基本信息
         r = requests.get(baseurl+'/html/1/'+str(bookid))
         r.encoding = 'gbk'
         c = r.text
@@ -48,29 +49,47 @@ class piaotian(object):
             print('-----------------------------------')
         return title_url
 
-
     def getcontent(self,title_url):
+        #正则表达式获取文章正文，和小说名称
         rc = re.compile(r'(.*)<div id="nr1">(.*)(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
-
+        rn = re.compile(r'(.*)<h1 id="_52mb_h1">(.*)</h1>',re.S)
         r = requests.Session()
-        for n in range(len(title_url)):
-            print('%s:[%s,%s]' % (n,title_url[n][0],title_url[n][1]))
-            s = r.get(title_url[n][1])
-            s.encoding = 'gbk'
-            c = s.text
-            
-            article_content = rc.match(c).group(2)
-            with open('book.html','at') as f:
-                f.write('<h2>%s</h2>' % title_url[n][0])
-                #f.write('## %s' % title_url[n][0])
-                f.write('<br/><br/>')
+        
+        #获取书籍的名称，方便合成到boot.html当中
+        s = r.get(title_url[0][1])
+        s.encoding = 'gbk'
+        c = s.text
+        article_name = rn.match(c).group(2)
+
+        #定义书籍html文件的头和尾
+        pagestart = '<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>%s</title><link type="text/css" href="styles.css" rel="Stylesheet"/></head><body>' % article_name
+        pageend = '</body></html>'
+
+        with open('temp/%s.html' % article_name ,'at') as f:
+            f.write(pagestart)
+            for n in range(len(title_url)):
+                print('%s:[%s,%s]' % (n,title_url[n][0],title_url[n][1]))
+                s = r.get(title_url[n][1])
+                s.encoding = 'gbk'
+                c = s.text
+                
+                article_content = rc.match(c).group(2)
+                article_content = article_content.replace('<br/><br/>','</p><p>')
+
+                #标题用h2包括，后面跟一个空行
+                f.write('<h2 id="id%s">%s</h2>' % (n+1,title_url[n][0]))
+                f.write('<br/>')
                 f.write(article_content)
-                f.write('<br/><br/>')
-            #with open ('%s-%s.txt' % (n+1,title_url[n][0]),'wt') as f:
-            #    f.write(article_content)
+                #以下用于每章节后面添加pagebreak分页
+                f.write('<mbp:pagebreak/>')
+                #with open ('%s-%s.txt' % (n+1,title_url[n][0]),'wt') as f:
+                #    f.write(article_content)
+            f.write(pageend)
+
+    def packbook(self):
+        pass
 
 if __name__ == '__main__':
     test = piaotian()
     title_url = test.getlist(1657)
     test.getcontent(title_url)
-
