@@ -72,7 +72,7 @@ class piaotian(object):
 
         if self.title in os.listdir('lib'): 
             print('书籍目录已存在！清除已有内容，重新生成文件！')
-            os.chdir('lib/%s' % self.title)
+            [os.remove('lib/%s/%s' % (self.title,file)) for file in os.listdir('lib/%s' % self.title)]
         else:
             os.mkdir('lib/%s' % self.title)
 
@@ -140,7 +140,7 @@ class piaotian(object):
         print('style.css制作完毕')
 
         #写入cover文件
-        with open ('lib/%s/cover.jpg' % self.title,'at') as f:
+        with open ('lib/%s/cover.jpg' % self.title,'ab') as f:
             f.write(cover)
         print('封面制作完毕')
 
