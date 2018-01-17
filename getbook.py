@@ -20,19 +20,21 @@ class piaotian(object):
         pageurl = []
         #title_url = {}
         len_title_url = 0
-        baseurl = 'http://m.piaotian.com'
+        baseurl = 'http://m.piaotian.com/html/'
+        bookdir = str(bookid)[0]
+
         #获取书籍在网站上的章节分页数
         re_pagenum = re.compile(r'(.*)/(\d{1,4})页(.*)',re.S)
         #获取书籍title
         re_title = re.compile(r'(.*)<h1 id="_52mb_h1"><.*>(.*)</a></h1>',re.S)
 
         #获取书籍的页数基本信息
-        r = requests.get(baseurl+'/html/1/'+str(bookid))
+        r = requests.get(baseurl + bookdir + '/' + str(bookid))
         r.encoding = 'gbk'
         c = r.text
         self.pagenum = int(re_pagenum.match(c).group(2))
         self.title = re_title.match(c).group(2)
-        [pageurl.append('http://m.piaotian.com/html/1/%s_%s/' % (bookid,d)) for d in range(1,self.pagenum+1)]
+        [pageurl.append('http://m.piaotian.com/html/%s/%s_%s/' % (bookdir,bookid,d)) for d in range(1,self.pagenum+1)]
 
         #获取书籍的目录title和url，并循环加入到title:url这种形式的字典当中
         r = requests.Session()
@@ -47,7 +49,7 @@ class piaotian(object):
                 #xpath解析网页中的目录标题，和目录url，同时目录url是相对引用，合并成绝对引用
                 list_title = tree.xpath('//html/body/div[2]/ul/li/a/text()')
                 list_url = tree.xpath('//html/body/div[2]/ul/li/a/@href')
-                list_url = [baseurl+list_url[i] for i in range(len(list_url))]
+                list_url = ['http://m.piaotian.com'+list_url[i] for i in range(len(list_url))]
 
                 #将title和url加入到一个字典当中，循环添加所有的信息
                 for i in range(len(list_url)):
@@ -64,10 +66,10 @@ class piaotian(object):
 
     def getcontent(self,title_url):
         #正则表达式获取文章正文
-        rc = re.compile(r'(.*)<div id="nr1">(.*)(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
+        rc = re.compile(r'(.*)<div id="nr1">(.*)(<br/><br/>&nbsp;&nbsp;&nbsp;&nbsp;{飘天文学www.piaotian.com感谢各位书友的支持，您的支持就是我们最大的动力})?(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
         r = requests.Session()
 
-        pagestart = '<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>%s</title><link type="text/css" href="style.css" rel="Stylesheet"/></head><body>' % self.title
+        pagestart = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>%s</title><link type="text/css" href="style.css" rel="Stylesheet"/></head><body>' % self.title
         pageend = '</body></html>'
 
         if self.title in os.listdir('lib'): 
@@ -86,6 +88,7 @@ class piaotian(object):
                 
                 article_content = rc.match(c).group(2)
                 article_content = article_content.replace('<br/><br/>','</p><p>')
+#                article_content = article_content.encode('utf-8')
 
                 #标题用h2包括，后面跟一个空行，id从1开始
                 f.write('<h2 id="id%s">%s</h2>' % (n+1,title_url[n][0]))
@@ -147,6 +150,6 @@ class piaotian(object):
 
 if __name__ == '__main__':
     test = piaotian()
-    title_url = test.getlist(1657)
+    title_url = test.getlist(7580)
     test.getcontent(title_url)
     test.ncxopf(title_url)
