@@ -147,9 +147,18 @@ class piaotian(object):
             f.write(cover)
         print('封面制作完毕')
 
+        #开始转换mobi
+        print('------------------------------')
+        print('开始转换mobi')
+        workdir = os.getcwd() + '/lib/%s/' % self.title
+        workopf = '%s/%s.opf' % (workdir,self.title)
+        workkindlegen = os.getcwd() + '/kindlegen/kindlegen'
+        out = os.popen('%s -c1 -dont_append_source -locale zh %s' % (workkindlegen,workopf)).read()
+        print(out)
+
 
 if __name__ == '__main__':
     test = piaotian()
-    title_url = test.getlist(7580)
+    title_url = test.getlist(2950)
     test.getcontent(title_url)
     test.ncxopf(title_url)
