@@ -1,0 +1,3 @@
+[submodule "lib.py"]
+	path = lib.py
+	url = https://github.com/SoPudge/lib.py.git
