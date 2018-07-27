@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*-                                                                                                                                  
+#-*- coding: utf-8 -*-                                                                                                                                  
 import re
 import os
+import codecs
+import chardet
 import requests 
 from lxml import html
 
@@ -8,6 +10,7 @@ class piaotian(object):
     def __init__(self):
         #获取小说名称
         self.title = ''
+        self.author = ''
         #piaotian目录分页数
         self.pagenum = 0
         #书籍总共的章节数，由分页数当中具体的章节计数而来
@@ -124,10 +127,14 @@ class piaotian(object):
         #先写入ncx文件
         with open ('lib/%s/toc.ncx' % self.title,'at') as f:
             f.write(ncxstart)
-            for n in range(len(title_url)):
-                f.write('<navPoint id="navpoint-%s" playOrder="%s"><navLabel><text>%s</text></navLabel><content src="text.html#id%s"/></navPoint>' % (n+1,n+1,title_url[n][0],n+1))
-                f.write('\n')
-            f.write(ncxend)
+            if len(title_url) != 0:
+                for n in range(len(title_url)):
+                    f.write('<navPoint id="navpoint-%s" playOrder="%s"><navLabel><text>%s</text></navLabel><content src="text.html#id%s"/></navPoint>' % (n+1,n+1,title_url[n][0],n+1))
+                    f.write('\n')
+                #f.write(ncxend)
+            else:
+                f.write('<navPoint id="navpoint" playOrder="1"><navLabel><text>%s</text></navLabel><content src="text.html"/></navPoint>' % '全部')
+                f.write(ncxend)
         print('NCX制作完毕')
 
         #写入OPF文件
@@ -156,9 +163,154 @@ class piaotian(object):
         out = os.popen('%s -c1 -dont_append_source -locale zh %s' % (workkindlegen,workopf)).read()
         print(out)
 
+class zxcs(piaotian):
+    def getdir(self,sortid):
+        #定义需要下载的知轩藏书目录
+        baseurl = 'http://www.zxcs8.com/sort/%s' % sortid
+
+        #获取分类一共多少个分页，方便下载
+        r = requests.get(baseurl)
+        c = r.text
+        tree = html.fromstring(c)
+        #通过xpath获取最后一页的链接，同时通过切片获取最后一页的数字值
+        pagenum = tree.xpath('/html/body/div[4]/div[2]/div[2]/a[6]/@href')[0][34:]
+
+        r = requests.Session()
+        for i in range(1,int(pagenum)+1):
+            #获取当前页面的url用于requests
+            current_page_url = '%s%s%s' % (baseurl,'/page/',i)
+            p = r.get(current_page_url)
+            print('%s|%s，抓取书籍列表……' % (i,pagenum))
+            c = p.text
+            tree = html.fromstring(c)
+            #获取当前书页所有的书籍url，名称，作者，和一共多少页
+            #将当前页面所有的书籍编号通过正则表达式获取
+            rl = re.compile(r'(http://www.zxcs8.com/post/)(.*)')
+            list_url = tree.xpath('/html/body/div[4]/div[2]/dl/dt/a/@href')
+            list_url = [rl.match(x).group(2) for x in list_url ]
+            list_text = tree.xpath('/html/body/div[4]/div[2]/dl/dt/a/text()')
+
+            #抓取完成一页之后，在抓取该页所有书籍的下载地址
+            n = 1
+            for j in list_url:
+                book_dl_url = '%s%s' % ('http://www.zxcs8.com/download.php?id=',j)
+                d = r.get(book_dl_url)
+                print('------%s|%s，抓取下载地址……' % (n,len(list_url)))
+                c = d.text
+                tree = html.fromstring(c)
+                dl_url = tree.xpath('/html/body/div[2]/div[2]/div[3]/div[2]/span[1]/a/@href')
+                #直接下载文件
+                l = r.get(dl_url[0])
+                with open ('/download/getbook/lib/zxcs/%s.rar' % str(15*(i-1)+n),'wb') as f:
+                    f.write(l.content)
+                print('--------下载完成该本')
+                n = n+1
+                print(dl_url)
+                self.title_url[j] = [j]
+        return self.title_url
+
+    def uncompress(self,filename):
+        num = len([j for i in [i[2] for i in os.walk('./lib/zxcs')] for j in i])
+        os.system('cd ./lib/zxcs')
+        for i in range(1,num+1):
+            os.system('rar x -yq %s.rar' % i)
+            print('%s|%s解压成功' % (i,num))
+        os.system('rm *.URL *.url *.rar')
+
+    def getlist(self,bookid):
+        #章节正则表达式
+        re_char_chn = re.compile(r'^\s*[第卷]\s*[0123456789一二三四五六七八九十零〇百千两]{1,9}[章?回?部?节?集?卷?]\s*.*[\n|\r|\r\n]',re.S)
+        re_char_eng = re.compile(r'^\s*[c-zC-z]{7,7}\s*[0-9]*.*[\n|\r|\r\n]',re.S)
+        re_title = re.compile(r'《(.*)》.*作者：(.*).txt',re.S)
+        encodings = {'UTF-16':'utf16', 'ISO-8859-1':'gbk', 'UTF-8-SIG':'utf8', 'ascii':'gbk','GB2312':'gbk'}
+
+        pagestart = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>power_by_jonchil</title><link type="text/css" href="style.css" rel="Stylesheet"/></head><body>'
+        pageend = '</body></html>'
+
+
+        self.title = re_title.match(bookid).group(1)
+        self.author = re_title.match(bookid).group(2)
+
+        if self.title in os.listdir('../../lib'): 
+            print('书籍目录已存在！清除已有内容，重新生成文件！')
+            [os.remove('../../lib/%s/%s' % (self.title,file)) for file in os.listdir('../../lib/%s' % self.title)]
+        else:
+            os.mkdir('../../lib/%s' % self.title)
+
+        print('开始制作书籍：%s',bookid)
+
+        with open(bookid,'rb') as f:
+            l = f.read(500)
+            encoding = chardet.detect(l)['encoding']
+
+        with codecs.open(bookid,'rb',encodings[encoding],'ignore') as f:
+            lines = f.readlines() 
+            #print(encoding)
+        #列表生成式，通过正则表达式筛选lines当中元素，同时通过if筛选长度大于0的元素
+        #有[0]的原因是正则findall方法给出的是一个list，通过if把为0的列表，即不符合正则的部分去掉
+        #没有if的话会报错，因为不符合正则的部分用[0]来切分的话，out of range
+        char_chn = [re_char_chn.findall(x)[0] for x in lines if len(re_char_chn.findall(x)) > 0]
+        if len(char_chn) == 0:
+            char_chn = [re_char_eng.findall(x)[0] for x in lines if len(re_char_eng.findall(x)) > 0]
+            if len(char_chn) == 0:
+                print('无法解析目录')
+
+        with open('../../lib/%s/text.html' % self.title,'at') as f:
+            j = 1
+            f.write(pagestart)
+            #titleurl初始化为空
+            self.title_url = {}
+            if len(char_chn) != 0:
+                for i in range(len(lines)):
+                    if i < lines.index(char_chn[0]):
+                        print('删除第一目录前内容')
+                    elif lines[i] in char_chn:
+                        f.write('<mbp:pagebreak/>')
+                        f.write('\n')
+                        f.write('<h2 id="id%s">%s</h2>' % (j,lines[i].strip('\r\n').strip('\u3000')))
+                        f.write('\n')
+                        #print(i)
+                        self.title_url[j-1] = [lines[i]]
+                        j = j + 1
+                        #print('写入章节：%s' % lines[i])
+                    else:
+                        if lines[i].strip('\r\n') == '':
+                            print('删除空章节')
+                        else:
+                            f.write('<p class="a">%s</p>' % (lines[i].strip('\r\n').strip('\u3000')))
+                            #print('写入正文%s' % i)
+                            f.write('\n')
+                            #还需添加每段空两格
+            else:
+                for i in range(len(lines)):
+                    if lines[i].strip('\r\n') == '':
+                        print('删除空章节')
+                    else:
+                        f.write('<p class="a">%s</p>' % (lines[i].strip('\r\n').strip('\u3000')))
+                        #print('写入正文%s' % i)
+                        f.write('\n')
+
+        return self.title_url
+
+        #with open('../chapter.txt','a') as f:
+        #    f.write("%s\n目录长度%s\n%s\n%s\n\n" % (bookid,len(char_chn),encoding,char_chn[:5]))
+        #print('打开书籍：%s' % bookid)
+        #print('目录长度%s' % len(char_chn))
+        #print(encoding)
+        #print(char_chn[:5])
+
 
 if __name__ == '__main__':
     test = piaotian()
-    title_url = test.getlist(2950)
+    title_url = test.getlist(4765)
     test.getcontent(title_url)
     test.ncxopf(title_url)
+
+    #l = os.listdir('./lib/zxcs')
+    #test = zxcs()
+    ##test.getdir(47)
+    #for i in l:
+    #    os.chdir('./lib/zxcs')
+    #    title_url = test.getlist(i)
+    #    os.chdir('../../')
+    #    test.ncxopf(title_url)
