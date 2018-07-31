@@ -1,109 +1,94 @@
 #-*- coding: utf-8 -*-                                                                                                                                  
 import re
 import os
+import sys
 import codecs
 import chardet
 import requests 
 from lxml import html
+sys.path.append("lib.py")
+from logger import Logger
 
-class piaotian(object):
+
+logger = Logger('Text2mobi')
+class TextToMobi(object):
+
+    '''
+    用于将txt文件转换成mobi文件，包含两个方法，一个是读取目录生成text.html，一个是打包mobi文件
+    '''
+
     def __init__(self):
-        #获取小说名称
-        self.title = ''
-        self.author = ''
-        #piaotian目录分页数
-        self.pagenum = 0
-        #书籍总共的章节数，由分页数当中具体的章节计数而来
-        self.chapternum = 0
-        #书籍章节-url字典
-        self.title_url = {}
+        pass
+    
+    def txt_to_html(self,txt_name):
+        '''
+        Description: 读取txt文件和其中的目录，生成相关的text.html文件
 
-    def getlist(self,bookid):
-        #内部变量申明
-        pageurl = []
-        #title_url = {}
-        len_title_url = 0
-        baseurl = 'http://m.piaotian.com/html/'
-        bookdir = str(bookid)[0]
+        Args: txtname
 
-        #获取书籍在网站上的章节分页数
-        re_pagenum = re.compile(r'(.*)/(\d{1,4})页(.*)',re.S)
-        #获取书籍title
-        re_title = re.compile(r'(.*)<h1 id="_52mb_h1"><.*>(.*)</a></h1>',re.S)
+        Returns: N/A, 生成text.html在temp目录当中
 
-        #获取书籍的页数基本信息
-        r = requests.get(baseurl + bookdir + '/' + str(bookid))
-        r.encoding = 'gbk'
-        c = r.text
-        self.pagenum = int(re_pagenum.match(c).group(2))
-        self.title = re_title.match(c).group(2)
-        [pageurl.append('http://m.piaotian.com/html/%s/%s_%s/' % (bookdir,bookid,d)) for d in range(1,self.pagenum+1)]
+        '''
 
-        #获取书籍的目录title和url，并循环加入到title:url这种形式的字典当中
-        r = requests.Session()
-        for n in range(len(pageurl)):
-            s = r.get(pageurl[n])
-
-            print('正在抓取的网页，详情如下：',pageurl[n])
-            s.encoding = 'gbk'
-            if s.status_code == 200:
-                c = s.text
-                tree = html.fromstring(c)
-                #xpath解析网页中的目录标题，和目录url，同时目录url是相对引用，合并成绝对引用
-                list_title = tree.xpath('//html/body/div[2]/ul/li/a/text()')
-                list_url = tree.xpath('//html/body/div[2]/ul/li/a/@href')
-                list_url = ['http://m.piaotian.com'+list_url[i] for i in range(len(list_url))]
-
-                #将title和url加入到一个字典当中，循环添加所有的信息
-                for i in range(len(list_url)):
-                    print('正在抓取第%s|%s页，总计第%s小节：%s' % (n+1,self.pagenum,len_title_url+i,list_title[i]))
-                    self.title_url[len_title_url + i] = [list_title[i],list_url[i]]
-
-            #这里获取上次的字典长度，下次方便直接相加，让title_url字典的key是不断增加的int
-            len_title_url = len(self.title_url) 
-            print('上次抓取完成后合计：',len_title_url)
-            print('-----------------------------------')
-        #将总计的章节数目，写入到self变量当中，方便后续引用
-        self.chapternum = len_title_url
-        return self.title_url
-
-    def getcontent(self,title_url):
         #正则表达式获取文章正文
-        rc = re.compile(r'(.*)<div id="nr1">(.*)(<br/><br/>&nbsp;&nbsp;&nbsp;&nbsp;{飘天文学www.piaotian.com感谢各位书友的支持，您的支持就是我们最大的动力})?(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
-        r = requests.Session()
+        with codecs.open(bookid,'rb',encodings[encoding],'ignore') as f:
+            lines = f.readlines() 
+            #print(encoding)
+        #列表生成式，通过正则表达式筛选lines当中元素，同时通过if筛选长度大于0的元素
+        #有[0]的原因是正则findall方法给出的是一个list，通过if把为0的列表，即不符合正则的部分去掉
+        #没有if的话会报错，因为不符合正则的部分用[0]来切分的话，out of range
+        char_chn = [re_char_chn.findall(x)[0] for x in lines if len(re_char_chn.findall(x)) > 0]
+        if len(char_chn) == 0:
+            char_chn = [re_char_eng.findall(x)[0] for x in lines if len(re_char_eng.findall(x)) > 0]
+            if len(char_chn) == 0:
+                print('无法解析目录')
 
-        pagestart = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>%s</title><link type="text/css" href="style.css" rel="Stylesheet"/></head><body>' % self.title
-        pageend = '</body></html>'
-
-        if self.title in os.listdir('lib'): 
-            print('书籍目录已存在！清除已有内容，重新生成文件！')
-            [os.remove('lib/%s/%s' % (self.title,file)) for file in os.listdir('lib/%s' % self.title)]
-        else:
-            os.mkdir('lib/%s' % self.title)
-
-        with open('lib/%s/text.html' % self.title,'at') as f:
+        with open('../../lib/%s/text.html' % self.title,'at') as f:
+            j = 1
             f.write(pagestart)
-            for n in range(len(title_url)):
-                print('%s:[%s,%s]' % (n,title_url[n][0],title_url[n][1]))
-                s = r.get(title_url[n][1])
-                s.encoding = 'gbk'
-                c = s.text
-                
-                article_content = rc.match(c).group(2)
-                article_content = article_content.replace('<br/><br/>','</p><p>')
-#                article_content = article_content.encode('utf-8')
+            #titleurl初始化为空
+            self.title_url = {}
+            if len(char_chn) != 0:
+                for i in range(len(lines)):
+                    if i < lines.index(char_chn[0]):
+                        print('删除第一目录前内容')
+                    elif lines[i] in char_chn:
+                        f.write('<mbp:pagebreak/>')
+                        f.write('\n')
+                        f.write('<h2 id="id%s">%s</h2>' % (j,lines[i].strip('\r\n').strip('\u3000')))
+                        f.write('\n')
+                        #print(i)
+                        self.title_url[j-1] = [lines[i]]
+                        j = j + 1
+                        #print('写入章节：%s' % lines[i])
+                    else:
+                        if lines[i].strip('\r\n') == '':
+                            print('删除空章节')
+                        else:
+                            f.write('<p class="a">%s</p>' % (lines[i].strip('\r\n').strip('\u3000')))
+                            #print('写入正文%s' % i)
+                            f.write('\n')
+                            #还需添加每段空两格
+            else:
+                for i in range(len(lines)):
+                    if lines[i].strip('\r\n') == '':
+                        print('删除空章节')
+                    else:
+                        f.write('<p class="a">%s</p>' % (lines[i].strip('\r\n').strip('\u3000')))
+                        #print('写入正文%s' % i)
+                        f.write('\n')
+        return 0
 
-                #标题用h2包括，后面跟一个空行，id从1开始
-                f.write('<h2 id="id%s">%s</h2>' % (n+1,title_url[n][0]))
-                f.write('<br/>')
-                f.write(article_content)
-                #以下用于每章节后面添加pagebreak分页
-                f.write('<mbp:pagebreak/>')
-                #with open ('%s-%s.txt' % (n+1,title_url[n][0]),'wt') as f:
-                #    f.write(article_content)
-            f.write(pageend)
+    def pack_mobi(self,chapter_list):
+        '''
+        Description: 打包ncx,opf,text.html,style.css文件为mobi文件，先读取临时文件，再写入实际内容保存
 
-    def ncxopf(self,title_url):
+        Args: txtname
+
+        Returns: N/A, 生成mobi文件保存在目录当中
+
+        '''
+
         #读取模板ncx文件，获取其中内容
         with open('temp/toc.ncx','rt') as f:
             ncx = f.read()
@@ -131,7 +116,6 @@ class piaotian(object):
                 for n in range(len(title_url)):
                     f.write('<navPoint id="navpoint-%s" playOrder="%s"><navLabel><text>%s</text></navLabel><content src="text.html#id%s"/></navPoint>' % (n+1,n+1,title_url[n][0],n+1))
                     f.write('\n')
-                #f.write(ncxend)
             else:
                 f.write('<navPoint id="navpoint" playOrder="1"><navLabel><text>%s</text></navLabel><content src="text.html"/></navPoint>' % '全部')
                 f.write(ncxend)
@@ -163,7 +147,139 @@ class piaotian(object):
         out = os.popen('%s -c1 -dont_append_source -locale zh %s' % (workkindlegen,workopf)).read()
         print(out)
 
-class zxcs(piaotian):
+
+class DLContent(object):
+    def __init__(self):
+        pass
+
+    def piaotian(self,bookurl):
+        #获取小说名称
+        title = ''
+        author = ''
+        #piaotian目录分页数
+        pagenum = 0
+        #书籍总共的章节数，由分页数当中具体的章节计数而来
+        chapternum = 0
+        #书籍章节-url字典
+        title_url = {}
+        #获取bookid，因为是修改的，所以单独获取
+        bookid = bookurl.split('/')[-1].split('.')[0]
+
+        #内部变量申明
+        pageurl = []
+        #title_url = {}
+        len_title_url = 0
+        baseurl = 'http://m.piaotian.com/html/'
+        bookdir = str(bookid)[0]
+
+        #获取书籍在网站上的章节分页数
+        re_pagenum = re.compile(r'(.*)/(\d{1,4})页(.*)',re.S)
+        #获取书籍title
+        re_title = re.compile(r'(.*)<h1 id="_52mb_h1"><.*>(.*)</a></h1>',re.S)
+
+        #获取书籍的页数基本信息
+        r = requests.get(baseurl + bookdir + '/' + str(bookid))
+        r.encoding = 'gbk'
+        c = r.text
+        pagenum = int(re_pagenum.match(c).group(2))
+        title = re_title.match(c).group(2)
+        [pageurl.append('http://m.piaotian.com/html/%s/%s_%s/' % (bookdir,bookid,d)) for d in range(1,pagenum+1)]
+
+        #获取书籍的目录title和url，并循环加入到title:url这种形式的字典当中
+        r = requests.Session()
+        for n in range(len(pageurl)):
+            s = r.get(pageurl[n])
+
+            print('正在抓取的网页，详情如下：',pageurl[n])
+            s.encoding = 'gbk'
+            if s.status_code == 200:
+                c = s.text
+                tree = html.fromstring(c)
+                #xpath解析网页中的目录标题，和目录url，同时目录url是相对引用，合并成绝对引用
+                list_title = tree.xpath('//html/body/div[2]/ul/li/a/text()')
+                list_url = tree.xpath('//html/body/div[2]/ul/li/a/@href')
+                list_url = ['http://m.piaotian.com'+list_url[i] for i in range(len(list_url))]
+
+                #将title和url加入到一个字典当中，循环添加所有的信息
+                for i in range(len(list_url)):
+                    print('正在抓取第%s|%s页，总计第%s小节：%s' % (n+1,pagenum,len_title_url+i,list_title[i]))
+                    title_url[len_title_url + i] = [list_title[i],list_url[i]]
+
+            #这里获取上次的字典长度，下次方便直接相加，让title_url字典的key是不断增加的int
+            len_title_url = len(title_url) 
+            print('上次抓取完成后合计：',len_title_url)
+            print('-----------------------------------')
+        #将总计的章节数目，写入到量当中，方便后续引用
+        chapternum = len_title_url
+
+        #正则表达式获取文章正文
+        rc = re.compile(r'(.*)<div id="nr1">(.*)(<br/><br/>&nbsp;&nbsp;&nbsp;&nbsp;{飘天文学www.piaotian.com感谢各位书友的支持，您的支持就是我们最大的动力})?(<br/></div>\r\n    </div>\r\n\r\n    <div class="nr_page">\r\n    \t <table cellpadding="0" cellspacing="0">\r\n             <tr>\r\n            \t<td class="prev">)(.*)',re.S)
+        r = requests.Session()
+
+        pagestart = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>%s</title><link type="text/css" href="style.css" rel="Stylesheet"/></head><body>' % title
+        pageend = '</body></html>'
+
+        if title in os.listdir('lib'): 
+            print('书籍目录已存在！清除已有内容，重新生成文件！')
+            [os.remove('lib/%s/%s' % (title,file)) for file in os.listdir('lib/%s' % title)]
+        else:
+            os.mkdir('lib/%s' % title)
+
+        with open('lib/%s/text.html' % title,'at') as f:
+            f.write(pagestart)
+            for n in range(len(title_url)):
+                print('%s:[%s,%s]' % (n,title_url[n][0],title_url[n][1]))
+                s = r.get(title_url[n][1])
+                s.encoding = 'gbk'
+                c = s.text
+                
+                article_content = rc.match(c).group(2)
+                article_content = article_content.replace('<br/><br/>','</p><p>')
+#                article_content = article_content.encode('utf-8')
+
+                #标题用h2包括，后面跟一个空行，id从1开始
+                f.write('<h2 id="id%s">%s</h2>' % (n+1,title_url[n][0]))
+                f.write('<br/>')
+                f.write(article_content)
+                #以下用于每章节后面添加pagebreak分页
+                f.write('<mbp:pagebreak/>')
+                #with open ('%s-%s.txt' % (n+1,title_url[n][0]),'wt') as f:
+                #    f.write(article_content)
+            f.write(pageend)
+
+    def zxcs(self,bookurl):
+        #获取小说名称
+        title = ''
+        author = ''
+
+        #requests下载小说
+        book_dl_url = '%s%s' % ('http://www.zxcs8.com/download.php?id=',bookurl.split('/')[-1])
+        r = requests.Session()
+
+        #获取下载页面的小说下载地址
+        d = r.get(book_dl_url)
+        print('抓取下载地址……')
+        c = d.text
+        tree = html.fromstring(c)
+        dl_url = tree.xpath('/html/body/div[2]/div[2]/div[3]/div[2]/span[1]/a/@href')
+        #with open ('/download/getbook/lib/zxcs/%s.rar' % str(15*(i-1)+n),'wb') as f:
+        #    f.write(l.content)
+        #print('--------下载完成该本')
+
+        #获取小说名称和作者名称
+        titleauthor = tree.xpath('/html/body/div[2]/div[2]/h2/text()')[0]
+        re_titleauthor = re.compile(r'《(.*)》.*作者：(.*)')
+        title = re_titleauthor.match(titleauthor).group(1)
+        author = re_titleauthor.match(titleauthor).group(2)
+
+        #直接下载文件
+        l = r.get(dl_url[0])
+
+        print(title)
+        print(author)
+
+
+class zxcs(object):
     def getdir(self,sortid):
         #定义需要下载的知轩藏书目录
         baseurl = 'http://www.zxcs8.com/sort/%s' % sortid
@@ -301,10 +417,10 @@ class zxcs(piaotian):
 
 
 if __name__ == '__main__':
-    test = piaotian()
-    title_url = test.getlist(4765)
-    test.getcontent(title_url)
-    test.ncxopf(title_url)
+    #test = piaotian()
+    #title_url = test.getlist(4765)
+    #test.getcontent(title_url)
+    #test.ncxopf(title_url)
 
     #l = os.listdir('./lib/zxcs')
     #test = zxcs()
@@ -314,3 +430,7 @@ if __name__ == '__main__':
     #    title_url = test.getlist(i)
     #    os.chdir('../../')
     #    test.ncxopf(title_url)
+
+    p = DLContent()
+    p.zxcs('http://www.zxcs8.com/post/2894')
+
