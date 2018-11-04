@@ -5,12 +5,12 @@ import sys
 import codecs
 import chardet 
 import requests 
+import subprocess
 from lxml import html
 sys.path.append("lib.py")
 from logger import Logger
 
 
-logger = Logger('Text2mobi')
 class Pack(object):
 
     '''
@@ -21,16 +21,17 @@ class Pack(object):
         pass
     
     def txt_to_html(self,book_details):
+        logger = Logger('txt_to_html')
         '''
         Description: 
             读取txt文件和其中的目录，生成相关的text.html文件，如果是已经生成过text.html文件的抓取类型
             则跳过上述生成步骤，直接返回传入的title_details
 
         Args: 
-            book_details，类型同抓取方法类当中的返回一致
+            book_details，类型同抓取方法类当中的返回一致，即[title,author]
 
         Returns: 
-            N/A, 生成text.html在temp目录当中
+            title_url, 生成text.html在temp目录当中，同时返回title_url的list，格式[0,章节名称]
 
         '''
 
@@ -46,20 +47,15 @@ class Pack(object):
         title = book_details[0]
         author = book_details[1]
 
-        if title in os.listdir('lib'): 
-            print('书籍目录已存在！清除已有内容，重新生成文件！')
-            [os.remove('lib/%s/%s' % (title,file)) for file in os.listdir('lib/%s' % title)]
-        else:
-            os.mkdir('lib/%s' % title)
 
-        print('开始制作书籍：%s',title)
+        logger.info('开始制作书籍：%s' % title)
 
-        with open(title,'rb') as f:
+        with open('lib/%s/%s-%s.txt' % (title,title,author),'rb') as f:
             l = f.read(500)
             encoding = chardet.detect(l)['encoding']
 
         #正则表达式获取文章正文
-        with codecs.open(bookid,'rb',encodings[encoding],'ignore') as f:
+        with codecs.open('lib/%s/%s-%s.txt' % (title,title,author),'rb',encodings[encoding],'ignore') as f:
             lines = f.readlines() 
             #print(encoding)
         #列表生成式，通过正则表达式筛选lines当中元素，同时通过if筛选长度大于0的元素
@@ -69,29 +65,32 @@ class Pack(object):
         if len(char_chn) == 0:
             char_chn = [re_char_eng.findall(x)[0] for x in lines if len(re_char_eng.findall(x)) > 0]
             if len(char_chn) == 0:
-                print('无法解析目录')
+                logger.info('无法解析目录')
 
-        with open('../../lib/%s/text.html' % self.title,'at') as f:
+        with open('lib/%s/text.html' % title,'at') as f:
             j = 1
             f.write(pagestart)
-            #titleurl初始化为空
-            self.title_url = {}
+            #titleurl初始化为空，返回后给rest_to_mobi使用
+            title_url = {}
             if len(char_chn) != 0:
                 for i in range(len(lines)):
                     if i < lines.index(char_chn[0]):
-                        print('删除第一目录前内容')
+                        #print('删除第一目录前内容')
+                        continue
                     elif lines[i] in char_chn:
-                        f.write('<mbp:pagebreak/>')
+                        #如果lines[i]在标题lis当中，则写入标题
+                        #f.write('<mbp:pagebreak/>')
                         f.write('\n')
                         f.write('<h2 id="id%s">%s</h2>' % (j,lines[i].strip('\r\n').strip('\u3000')))
                         f.write('\n')
                         #print(i)
-                        self.title_url[j-1] = [lines[i]]
+                        title_url[j-1] = [lines[i]]
                         j = j + 1
                         #print('写入章节：%s' % lines[i])
                     else:
                         if lines[i].strip('\r\n') == '':
-                            print('删除空章节')
+                            #print('删除空章节')
+                            continue
                         else:
                             f.write('<p class="a">%s</p>' % (lines[i].strip('\r\n').strip('\u3000')))
                             #print('写入正文%s' % i)
@@ -100,18 +99,21 @@ class Pack(object):
             else:
                 for i in range(len(lines)):
                     if lines[i].strip('\r\n') == '':
-                        print('删除空章节')
+                        #print('删除空章节')
+                        continue
                     else:
                         f.write('<p class="a">%s</p>' % (lines[i].strip('\r\n').strip('\u3000')))
                         #print('写入正文%s' % i)
                         f.write('\n')
-        return 0
+            f.write(pageend)
+        return title_url
 
-    def res_to_mobi(self,chapter_list):
+    def res_to_mobi(self,title,author,title_url):
+        logger = Logger('res_to_mobi')
         '''
         Description: 打包ncx,opf,text.html,style.css文件为mobi文件，先读取临时文件，再写入实际内容保存
 
-        Args: txtname
+        Args:title_url，章节名称的dict，格式是{0:titlename,1:titlename}，从0开始
 
         Returns: N/A, 生成mobi文件保存在目录当中
 
@@ -126,8 +128,6 @@ class Pack(object):
         #读取模板opf文件获取其中内容
         with open('temp/title.opf','rt') as f:
             opf = f.read()
-        opfstart = opf.split('$title')[0]
-        opfend = opf.split('$title')[1]
 
         #读取css文件
         with open('temp/style.css','rt') as f:
@@ -138,7 +138,7 @@ class Pack(object):
             cover = f.read()
 
         #先写入ncx文件
-        with open ('lib/%s/toc.ncx' % self.title,'at') as f:
+        with open ('lib/%s/toc.ncx' % title,'at') as f:
             f.write(ncxstart)
             if len(title_url) != 0:
                 for n in range(len(title_url)):
@@ -147,33 +147,32 @@ class Pack(object):
             else:
                 f.write('<navPoint id="navpoint" playOrder="1"><navLabel><text>%s</text></navLabel><content src="text.html"/></navPoint>' % '全部')
                 f.write(ncxend)
-        print('NCX制作完毕')
+        logger.info('NCX制作完毕')
 
         #写入OPF文件
-        with open ('lib/%s/%s.opf' % (self.title,self.title),'at') as f:
-            f.write(opfstart)
-            f.write(self.title)
-            f.write(opfend)
-        print('OPF制作完毕')
+        with open ('lib/%s/%s-%s.opf' % (title,title,author),'at') as f:
+            opf = opf.replace('$title',title).replace('$author',author)
+            f.write(opf)
+        logger.info('OPF制作完毕')
 
         #写入css文件
-        with open ('lib/%s/style.css' % self.title,'at') as f:
+        with open ('lib/%s/style.css' % title,'at') as f:
             f.write(stylecss)
-        print('style.css制作完毕')
+        logger.info('style.css制作完毕')
 
         #写入cover文件
-        with open ('lib/%s/cover.jpg' % self.title,'ab') as f:
+        with open ('lib/%s/cover.jpg' % title,'ab') as f:
             f.write(cover)
-        print('封面制作完毕')
+        logger.info('封面制作完毕')
 
         #开始转换mobi
-        print('------------------------------')
-        print('开始转换mobi')
-        workdir = os.getcwd() + '/lib/%s/' % self.title
-        workopf = '%s/%s.opf' % (workdir,self.title)
+        logger.info('开始转换mobi')
+        workdir = os.getcwd() + '/lib/%s/' % title
+        workopf = '%s/%s-%s.opf' % (workdir,title,author)
         workkindlegen = os.getcwd() + '/kindlegen/kindlegen'
         out = os.popen('%s -c1 -dont_append_source -locale zh %s' % (workkindlegen,workopf)).read()
-        print(out)
+        #print(out)
+        logger.info(out)
 
 
 class Download(object):
@@ -313,6 +312,7 @@ class Download(object):
 
 
     def zxcs(self,bookurl):
+        logger = Logger('zxcs')
         #获取小说名称
         title = ''
         author = ''
@@ -323,7 +323,7 @@ class Download(object):
 
         #获取下载页面的小说下载地址
         d = r.get(book_dl_url)
-        print('抓取下载地址……')
+        logger.info('抓取下载地址……')
         d.encoding
         c = d.text
         tree = html.fromstring(c)
@@ -337,7 +337,7 @@ class Download(object):
 
         #确认是存在书籍目录
         if title in os.listdir('lib'): 
-            print('书籍目录已存在！清除已有内容，重新生成文件！')
+            logger.info('书籍目录已存在！清除已有内容，重新生成文件！')
             [os.remove('lib/%s/%s' % (title,file)) for file in os.listdir('lib/%s' % title)]
         else:
             os.mkdir('lib/%s' % title)
@@ -346,17 +346,22 @@ class Download(object):
         l = r.get(dl_url[0])
         with open ('lib/%s/%s.rar' % (title,title),'wb') as f:
             f.write(l.content)
-        print('下载完成该本')
+        logger.info('下载完成该本')
 
         #下载完成后解压到本地，并删除原始的rar文件
-        os.system('rar x -yc- lib/%s/%s.rar lib/%s/ ' % (title,title,title))
+        #os.system('rar x -y -c- lib/%s/%s.rar lib/%s/ ' % (title,title,title))
+        subprocess.run(['rar','x','-y','-c-','lib/%s/%s.rar' % (title,title),'lib/%s/' % title],stdout=subprocess.PIPE)
         os.system('rm -f lib/%s/%s' % (title,'*.URL'))
+        os.system('rm -f lib/%s/%s' % (title,'*.url'))
         os.system('rm -f lib/%s/%s' % (title,'*.rar'))
-        print('解压成功')
+        #重命名小说为书名-作者的格式
+        os.system('mv -f lib/%s/*.txt lib/%s/%s-%s.txt' % (title,title,title,author))
+        logger.info('解压成功')
 
         return [title,author]
 
     def jjxs(self,bookurl):
+        logger = Logger('jjxs')
         '''
         用于抓取99小说网手机版的小说，需要现在小说主页用xpath找到下载链接，再进入下载链接通过xpath
         找到世纪下载网址，然后直接下载小说txt文档
@@ -371,7 +376,7 @@ class Download(object):
 
         #获取下载页面的小说下载地址
         d = r.get(bookurl)
-        print('抓取主页地址……')
+        logger.info('抓取主页地址……')
         d.encoding = 'utf-8'
         c = d.text
         tree = html.fromstring(c)
@@ -393,7 +398,7 @@ class Download(object):
 
         #确认是存在书籍目录
         if title in os.listdir('lib'): 
-            print('书籍目录已存在！清除已有内容，重新生成文件！')
+            logger.info('书籍目录已存在！清除已有内容，重新生成文件！')
             [os.remove('lib/%s/%s' % (title,file)) for file in os.listdir('lib/%s' % title)]
         else:
             os.mkdir('lib/%s' % title)
@@ -407,22 +412,10 @@ class Download(object):
 
 
 if __name__ == '__main__':
-    #test = piaotian()
-    #title_url = test.getlist(4765)
-    #test.getcontent(title_url)
-    #test.ncxopf(title_url)
 
-    #l = os.listdir('./lib/zxcs')
-    #test = zxcs()
-    ##test.getdir(47)
-    #for i in l:
-    #    os.chdir('./lib/zxcs')
-    #    title_url = test.getlist(i)
-    #    os.chdir('../../')
-    #    test.ncxopf(title_url)
-
-    p = Download()
-    x = p.zxcs('http://www.zxcs8.com/post/3579')
-    #print(x)
-
+    d = Download()
+    p = Pack()
+    x = d.zxcs('http://www.zxcs.me/post/3847')
+    title_url = p.txt_to_html(x)
+    p.res_to_mobi(x[0],x[1],title_url)
 
