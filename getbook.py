@@ -410,7 +410,6 @@ class Download(object):
         return [title,author]
 
 
-
 if __name__ == '__main__':
 
     d = Download()
