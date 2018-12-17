@@ -414,7 +414,6 @@ if __name__ == '__main__':
 
     d = Download()
     p = Pack()
-    x = d.zxcs('http://www.zxcs.me/post/3847')
+    x = d.zxcs('http://www.zxcs.me/post/1810')
     title_url = p.txt_to_html(x)
     p.res_to_mobi(x[0],x[1],title_url)
-
