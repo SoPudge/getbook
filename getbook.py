@@ -18,7 +18,8 @@ class Pack(object):
     '''
 
     def __init__(self):
-        pass
+        #初始化下载类可以直接调用
+        self.d = Download()
 
     def txt_to_html(self, book_details):
         logger = Logger('txt_to_html')
@@ -37,7 +38,7 @@ class Pack(object):
             r'^\s*[第卷]\s*[0123456789一二三四五六七八九十零〇百千两]{1,9}[章?回?部?节?集?卷?]\s*.*[\n|\r|\r\n]', re.S)
         re_char_eng = re.compile(
             r'^\s*[c-zC-z]{7,7}\s*[0-9]*.*[\n|\r|\r\n]', re.S)
-        re_title = re.compile(r'《(.*)》.*作者：(.*).txt', re.S)
+        #re_title = re.compile(r'《(.*)》.*作者：(.*).txt', re.S)
         encodings = {'UTF-16': 'utf16', 'ISO-8859-1': 'gbk',
                      'UTF-8-SIG': 'utf8', 'ascii': 'gbk', 'GB2312': 'gbk'}
 
@@ -69,36 +70,39 @@ class Pack(object):
                 logger.info('无法解析目录')
 
         with open('lib/%s/text.html' % title, 'at') as f:
+            #章节中的id自增序列号
             j = 1
             f.write(pagestart)
             # titleurl初始化为空，返回后给rest_to_mobi使用
             title_url = {}
+            #如果正常获取目录即char_chn不为空，则正常写入目录和正文
             if len(char_chn) != 0:
                 for i in range(len(lines)):
+                    #不读取第一目录前的内容，通常为广告
                     if i < lines.index(char_chn[0]):
-                        # print('删除第一目录前内容')
                         continue
+                    # 如果lines[i]在标题lis当中，则写入标题
                     elif lines[i] in char_chn:
-                        # 如果lines[i]在标题lis当中，则写入标题
-                        # f.write('<mbp:pagebreak/>')
                         f.write('\n')
                         f.write('<h2 id="id%s">%s</h2>' %
                                 (j, lines[i].strip('\r\n').strip('\u3000')))
                         f.write('\n')
                         # print(i)
+                        #在写入标题的时候存入title_url当中
                         title_url[j-1] = [lines[i]]
                         j = j + 1
                         #print('写入章节：%s' % lines[i])
+                    #剩下的就是正文部分写入章节后面
                     else:
+                        #删除章节正文为空的部分
                         if lines[i].strip('\r\n') == '':
-                            # print('删除空章节')
                             continue
                         else:
                             f.write('<p class="a">%s</p>' %
                                     (lines[i].strip('\r\n').strip('\u3000')))
-                            #print('写入正文%s' % i)
                             f.write('\n')
                             # 还需添加每段空两格
+            #意外情况如果无法获取任何目录，则直接写正文
             else:
                 for i in range(len(lines)):
                     if lines[i].strip('\r\n') == '':
@@ -112,7 +116,7 @@ class Pack(object):
             f.write(pageend)
         return title_url
 
-    def res_to_mobi(self, title, author, title_url):
+    def res_to_mobi(self, url):
         logger = Logger('res_to_mobi')
         '''
         Description: 
@@ -122,6 +126,10 @@ class Pack(object):
         Returns:
             N/A, 生成mobi文件保存在目录当中
         '''
+
+        #生成html文件，执行txt_to_html，并返回目录结构数组
+        [title, author] = self.d.zxcs(url)
+        title_url = self.txt_to_html([title,author])
 
         # 读取模板ncx文件，获取其中内容
         with open('temp/mobi/toc.ncx', 'rt') as f:
@@ -438,8 +446,5 @@ class Download(object):
 
 if __name__ == '__main__':
 
-    d = Download()
     p = Pack()
-    x = d.zxcs('http://www.zxcs.me/post/14008')
-    title_url = p.txt_to_html(x)
-    p.res_to_mobi(x[0], x[1], title_url)
+    p.res_to_mobi('http://www.zxcs.me/post/13396')
