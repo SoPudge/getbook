@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import pdb
 import codecs
 import os
 import re
@@ -18,10 +19,77 @@ class Pack(object):
     '''
 
     def __init__(self):
-        #初始化下载类可以直接调用
+        # 初始化下载类可以直接调用
         self.d = Download()
 
-    def txt_to_html(self, book_details):
+    def txt_handler(self, file):
+        """Description
+                传入未经清洗的txt文件，输出清洗过后的txt文件，按行返回，只做基本的清洗。
+                每次调用输出一个清洗后的行，生成html工作由txt_to_html完成
+
+        @param file:  传入需要清洗的txt文件目录，类似file='./lib/xxx/title-author.txt'
+        @type  file:  String
+
+        @return: 返回一个行即可
+        @rtype : str, line
+
+        @raise e:  None
+        """
+        # logger = Logger('txt_handler')
+
+        # 章节正则表达式
+        re_char_chn = re.compile(
+            r'^\s*[第卷][0123456789一二三四五六七八九十零〇百千两]*[章?回?部?节?集?卷?].*', re.S)
+        # re_char_eng = re.compile(
+            # r'^\s*[c-zC-z]{7,7}\s*[0-9]*.*[\n|\r|\r\n]', re.S)
+        #re_title = re.compile(r'《(.*)》.*作者：(.*).txt', re.S)
+
+        encodings = {'UTF-16': 'utf16', 'ISO-8859-1': 'gbk',
+                     'UTF-8-SIG': 'utf8', 'ascii': 'gbk', 'GB2312': 'gbk'}
+
+        # 探测需要处理的txt文件编码格式，读取前500行
+        with open(file, 'rb') as f:
+            l = f.read(500)
+            encoding = chardet.detect(l)['encoding']
+
+        # 正则表达式按line获取文章正文
+
+        #存储章节标题数组
+        title_url = []
+        title_content = []
+        with codecs.open(file, 'rb', encodings[encoding], 'ignore') as f:
+            while True:
+                line = f.readline()
+                #存储title+正文一个章节的数组
+                #测试章节标题正则表达式
+                title_item = re_char_chn.findall(line.strip('\r\n').strip('\u3000'))
+                # 结束吻端读取
+                if not line:
+                    break
+                # 遇到章节存储，返回上一个title_content，然后下次先清空title_content再存储
+                # 每次返回时确定title_content是否为空，如为空一般是首次返回跳过
+                elif title_item != [] and len(title_item[0]) < 30:
+                    if title_url == []:
+                        pass
+                    else:
+                        # print(title_content[0])
+                        yield title_content
+                    title_url.append(title_item[0])
+                    title_content = []
+                    title_content.append(title_item[0])
+                    continue
+                # 无章节时候，即第一章节前面的抛弃
+                elif title_url == []:
+                    continue
+                # 空行抛弃掉
+                elif line.strip('\r\n').strip('\u3000') == '':
+                    continue
+                else:
+                    title_content.append(line.strip('\r\n').strip('\u3000'))
+            #到最后一章节时候yield倒数第二章内容，最后一章单独yield出来
+            yield title_content
+
+    def txt_to_html(self, book_details, book_type='mobi'):
         logger = Logger('txt_to_html')
         '''
         Description: 
@@ -33,90 +101,38 @@ class Pack(object):
             title_url: 生成text.html在temp目录当中，同时返回title_url的list，格式[0,章节名称]
         '''
 
-        # 章节正则表达式
-        re_char_chn = re.compile(
-            r'^\s*[第卷]\s*[0123456789一二三四五六七八九十零〇百千两]{1,9}[章?回?部?节?集?卷?]\s*.*[\n|\r|\r\n]', re.S)
-        re_char_eng = re.compile(
-            r'^\s*[c-zC-z]{7,7}\s*[0-9]*.*[\n|\r|\r\n]', re.S)
-        #re_title = re.compile(r'《(.*)》.*作者：(.*).txt', re.S)
-        encodings = {'UTF-16': 'utf16', 'ISO-8859-1': 'gbk',
-                     'UTF-8-SIG': 'utf8', 'ascii': 'gbk', 'GB2312': 'gbk'}
 
-        pagestart = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /><title>power_by_jonchil</title><link type="text/css" href="style.css" rel="Stylesheet"/></head><body>'
-        pageend = '</body></html>'
+        html_page_start = '<?xml version="1.0" encoding="utf-8" ?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN"><head><metahttp-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8"/><meta name="generator" content="https://github.com/SoPudge" /><title>^Chapter^</title><link rel="stylesheet" href="style.css" type="text/css" /></head><body>\n'
+        html_page_end = '</body></html>'
 
         title = book_details[0]
         author = book_details[1]
 
         logger.info('开始制作书籍：%s' % title)
 
-        with open('lib/%s/%s-%s.txt' % (title, title, author), 'rb') as f:
-            l = f.read(500)
-            encoding = chardet.detect(l)['encoding']
+        #epub制作开始
+        # 分章节写入html文件到OEBPS文件夹，格式chapter1.html，chpater2.html
+        n = 1
+        for chapter in self.txt_handler('lib/%s/%s-%s.txt' % (title, title, author)):
+            print(chapter[0])
+            with open('lib/%s/OEBPS/chapter%s.html' % (title, n), 'w') as f:
+                #替换html声明当中标题并重新写入
+                f.write(html_page_start.replace('^Chapter^',chapter[0]))
+                #写入body后第一个章节标题，写入toc.ncx，写入opf文件
+                #向html当中写入标题
+                f.write('<h2 id="title" class="titlel2std">%s</h2>\n' % chapter[0])
+                #写入toc.ncx文件
+                #todo
+                #写入opf文件
+                #todo
+                #按行写入正文，跳过第一个章节标题
+                for content in chapter[1:]:
+                    f.write('<p class="a">%s</p>\n' % content)
+                f.write(html_page_end)
+            n = n + 1
 
-        # 正则表达式获取文章正文
-        with codecs.open('lib/%s/%s-%s.txt' % (title, title, author), 'rb', encodings[encoding], 'ignore') as f:
-            lines = f.readlines()
-            # print(encoding)
-        # 列表生成式，通过正则表达式筛选lines当中元素，同时通过if筛选长度大于0的元素
-        # 有[0]的原因是正则findall方法给出的是一个list，通过if把为0的列表，即不符合正则的部分去掉
-        # 没有if的话会报错，因为不符合正则的部分用[0]来切分的话，out of range
-        char_chn = [re_char_chn.findall(
-            x)[0] for x in lines if len(re_char_chn.findall(x)) > 0]
-        if len(char_chn) == 0:
-            char_chn = [re_char_eng.findall(
-                x)[0] for x in lines if len(re_char_eng.findall(x)) > 0]
-            if len(char_chn) == 0:
-                logger.info('无法解析目录')
-
-        with open('lib/%s/text.html' % title, 'at') as f:
-            #章节中的id自增序列号
-            j = 1
-            f.write(pagestart)
-            # titleurl初始化为空，返回后给rest_to_mobi使用
-            title_url = {}
-            #如果正常获取目录即char_chn不为空，则正常写入目录和正文
-            if len(char_chn) != 0:
-                for i in range(len(lines)):
-                    #不读取第一目录前的内容，通常为广告
-                    if i < lines.index(char_chn[0]):
-                        continue
-                    # 如果lines[i]在标题lis当中，则写入标题
-                    elif lines[i] in char_chn:
-                        f.write('\n')
-                        f.write('<h2 id="id%s">%s</h2>' %
-                                (j, lines[i].strip('\r\n').strip('\u3000')))
-                        f.write('\n')
-                        # print(i)
-                        #在写入标题的时候存入title_url当中
-                        title_url[j-1] = [lines[i]]
-                        j = j + 1
-                        #print('写入章节：%s' % lines[i])
-                    #剩下的就是正文部分写入章节后面
-                    else:
-                        #删除章节正文为空的部分
-                        if lines[i].strip('\r\n') == '':
-                            continue
-                        else:
-                            f.write('<p class="a">%s</p>' %
-                                    (lines[i].strip('\r\n').strip('\u3000')))
-                            f.write('\n')
-                            # 还需添加每段空两格
-            #意外情况如果无法获取任何目录，则直接写正文
-            else:
-                for i in range(len(lines)):
-                    if lines[i].strip('\r\n') == '':
-                        # print('删除空章节')
-                        continue
-                    else:
-                        f.write('<p class="a">%s</p>' %
-                                (lines[i].strip('\r\n').strip('\u3000')))
-                        #print('写入正文%s' % i)
-                        f.write('\n')
-            f.write(pageend)
-        return title_url
-
-    def res_to_mobi(self, url):
+ 
+    def res_to_book(self, url, book_type='mobi'):
         logger = Logger('res_to_mobi')
         '''
         Description: 
@@ -127,9 +143,18 @@ class Pack(object):
             N/A, 生成mobi文件保存在目录当中
         '''
 
-        #生成html文件，执行txt_to_html，并返回目录结构数组
+        # 生成html文件，同时创建文件目录，执行txt_to_html，并返回目录结构数组
         [title, author] = self.d.zxcs(url)
-        title_url = self.txt_to_html([title,author])
+
+        # 根据book_type创建不同子目录
+        # mobi无需创建，直接在根目录使用
+        # epub创建下列目录
+        if book_type == 'epub':
+            os.mkdir('lib/%s/OEBPS' % title)
+            os.mkdir('lib/%s/META-INF' % title)
+
+        # 执行txt文件转换html方法，根据book_type不同创建不同的子文件
+        title_url = self.txt_to_html([title, author])
 
         # 读取模板ncx文件，获取其中内容
         with open('temp/mobi/toc.ncx', 'rt') as f:
@@ -379,14 +404,15 @@ class Download(object):
         subprocess.run(['rar', 'x', '-y', '-c-', 'lib/%s/%s.rar' %
                        (title, title), 'lib/%s/' % title], stdout=subprocess.PIPE)
         logger.info('解压成功')
-        #删除txt之外内容，并重命名txt为title-author.txt的形式
-        todel = ['rar','url','URL']
+        # 删除txt之外内容，并重命名txt为title-author.txt的形式
+        todel = ['rar', 'url', 'URL']
         for file in os.listdir('lib/%s' % title):
             if file[-3:] in todel:
-                os.remove('lib/%s/%s' % (title,file))
+                os.remove('lib/%s/%s' % (title, file))
             # 重命名小说为书名-作者的格式
             elif file[-3:] in 'txt':
-                os.rename("lib/%s/%s" % (title,file), "lib/%s/%s-%s.txt" % (title, title, author))
+                os.rename("lib/%s/%s" % (title, file),
+                          "lib/%s/%s-%s.txt" % (title, title, author))
         logger.info('清理目录删除txt外文件并重命名txt')
         return [title, author]
 
@@ -433,7 +459,7 @@ class Download(object):
         if title in os.listdir('lib'):
             logger.info('书籍目录已存在！清除已有内容，重新生成文件！')
             [os.remove('lib/%s/%s' % (title, file))
-            for file in os.listdir('lib/%s' % title)]
+             for file in os.listdir('lib/%s' % title)]
         else:
             os.mkdir('lib/%s' % title)
 
@@ -447,4 +473,11 @@ class Download(object):
 if __name__ == '__main__':
 
     p = Pack()
-    p.res_to_mobi('http://www.zxcs.me/post/13396')
+    # p.res_to_book('http://www.zxcs.me/post/13396')
+    file = './lib/我的成神日志/我的成神日志-大力宝.txt'
+    os.makedirs('lib/我的成神日志/OEBPS/', exist_ok=True)
+    p.txt_to_html(['我的成神日志', '大力宝'])
+
+    # p.txt_handler(file)
+    # for i in p.txt_handler(file):
+        # pass
